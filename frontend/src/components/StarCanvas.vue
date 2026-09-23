@@ -112,13 +112,55 @@ function draw() {
   ctx.beginPath()
   for (let az = 0; az <= 360; az += 5) {
     const azRad = az * Math.PI / 180
-    const r = (Math.PI / 2) * scale * 0.45
-    const x = cx + store.panX + r * Math.sin(azRad)
-    const y = cy + store.panY - r * Math.cos(azRad)
+    const r = (Math.PI / 2)
+    const x = cx + (store.panX + r * Math.sin(azRad)) * scale * 0.45
+    const y = cy + (store.panY - r * Math.cos(azRad)) * scale * 0.45
     az === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
   }
   ctx.closePath()
   ctx.stroke()
+
+  // selected star highlight
+  const sel = store.selectedStar
+  if (sel) {
+    const [sx, sy] = store.projectStar(sel.ra, sel.dec, cx, cy, scale)
+    if (sx > -500 && sx < w + 500 && sy > -500 && sy < h + 500) {
+      // pulsing amber ring with crosshair ticks
+      const pulse = 1 + 0.12 * Math.sin(Date.now() / 280)
+      const rr = (store.starRadius(sel.mag) * 2 + 8 * store.zoom) * pulse
+      ctx.strokeStyle = 'rgba(251,191,36,0.9)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(sx, sy, rr, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.moveTo(sx + dx * (rr + 3), sy + dy * (rr + 3))
+        ctx.lineTo(sx + dx * (rr + 9 * store.zoom), sy + dy * (rr + 9 * store.zoom))
+      }
+      ctx.stroke()
+    } else {
+      // below the horizon: mark its direction on the horizon circle
+      const { az } = store.altAz(sel.ra, sel.dec)
+      const rH = Math.PI / 2
+      const ex = cx + (store.panX + rH * Math.sin(az)) * scale * 0.45
+      const ey = cy + (store.panY - rH * Math.cos(az)) * scale * 0.45
+      const size = 7 * store.zoom
+      ctx.fillStyle = 'rgba(251,191,36,0.9)'
+      ctx.save()
+      ctx.translate(ex, ey)
+      ctx.rotate(az)
+      ctx.beginPath()
+      ctx.moveTo(0, -size)
+      ctx.lineTo(size * 0.7, size * 0.6)
+      ctx.lineTo(-size * 0.7, size * 0.6)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
+      ctx.font = `${11 * store.zoom}px system-ui`
+      ctx.fillText(`${sel.nameCn} 在地平线以下`, ex + 10, ey - 8)
+    }
+  }
 
   // constellation labels
   if (store.showLabels) {

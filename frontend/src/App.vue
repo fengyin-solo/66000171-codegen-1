@@ -9,9 +9,9 @@
         <input v-model="store.searchQuery" placeholder="搜索天体..." class="w-full bg-gray-800 rounded px-3 py-2 text-sm" />
         <div v-if="store.filteredStars.length" class="mt-1">
           <div v-for="s in store.filteredStars" :key="s.name"
-            @click="store.selectedStar = s"
+            @click="store.focusOnStar(s)"
             class="bg-gray-800 p-2 rounded mt-1 cursor-pointer hover:bg-gray-700 text-sm">
-            {{ s.name }} <span class="text-gray-400">mag {{ s.mag }}</span>
+            {{ s.nameCn }} {{ s.name }} <span class="text-gray-400">mag {{ s.mag }}</span>
           </div>
         </div>
       </div>
@@ -50,7 +50,7 @@
 
       <!-- Star Info -->
       <div v-if="store.selectedStar" class="bg-gray-800 rounded-xl p-3">
-        <h3 class="text-amber-400 font-bold">{{ store.selectedStar.name }}</h3>
+        <h3 class="text-amber-400 font-bold">{{ store.selectedStar.nameCn }} {{ store.selectedStar.name }}</h3>
         <div class="text-xs text-gray-300 mt-2 space-y-1">
           <p>赤经: {{ store.selectedStar.ra.toFixed(2) }}h</p>
           <p>赤纬: {{ store.selectedStar.dec.toFixed(2) }}°</p>
@@ -59,13 +59,8 @@
         </div>
       </div>
 
-      <!-- Constellation list -->
-      <div class="text-xs">
-        <h4 class="text-gray-400 mb-1">可见星座</h4>
-        <div v-for="c in store.CONSTELLATIONS" :key="c.name" class="py-1 text-gray-300">
-          {{ c.nameCn }} <span class="text-gray-500">({{ c.name }})</span>
-        </div>
-      </div>
+      <!-- Constellation catalog -->
+      <ConstellationCatalog />
 
       <div class="text-xs text-gray-500 mt-auto">
         LST: {{ store.localSiderealTime.toFixed(2) }}h
@@ -83,6 +78,7 @@
 import { ref } from 'vue'
 import { useSkyStore } from './store/sky'
 import StarCanvas from './components/StarCanvas.vue'
+import ConstellationCatalog from './components/ConstellationCatalog.vue'
 
 const store = useSkyStore()
 const dateStr = ref(new Date().toISOString().slice(0, 16))

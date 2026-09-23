@@ -30,19 +30,26 @@ export const useSkyStore = defineStore('sky', () => {
     return STARS.filter(s => s.name.toLowerCase().includes(q)).slice(0, 5)
   })
 
-  function projectStar(ra: number, dec: number, cx: number, cy: number, scale: number): [number, number] {
+  function altAz(ra: number, dec: number): { alt: number, az: number } {
     const ha = (localSiderealTime.value - ra) * 15 * Math.PI / 180
     const decRad = dec * Math.PI / 180
     const latRad = latitude.value * Math.PI / 180
 
     const alt = Math.asin(Math.sin(decRad) * Math.sin(latRad) + Math.cos(decRad) * Math.cos(latRad) * Math.cos(ha))
     const az = Math.atan2(-Math.cos(decRad) * Math.sin(ha), Math.sin(decRad) * Math.cos(latRad) - Math.cos(decRad) * Math.sin(latRad) * Math.cos(ha))
+    return { alt, az }
+  }
+
+  // panX/panY are in radians of angular distance from the zenith, so a
+  // focused view stays centered regardless of canvas size or zoom level.
+  function projectStar(ra: number, dec: number, cx: number, cy: number, scale: number): [number, number] {
+    const { alt, az } = altAz(ra, dec)
 
     if (alt < -0.1) return [-999, -999] // below horizon
 
-    const r = (Math.PI / 2 - alt) * scale * 0.45
-    const x = cx + panX.value + r * Math.sin(az)
-    const y = cy + panY.value - r * Math.cos(az)
+    const r = (Math.PI / 2 - alt)
+    const x = cx + (panX.value + r * Math.sin(az)) * scale * 0.45
+    const y = cy + (panY.value - r * Math.cos(az)) * scale * 0.45
     return [x, y]
   }
 
@@ -69,10 +76,20 @@ export const useSkyStore = defineStore('sky', () => {
     selectedStar.value = closest
   }
 
+  // Select a star and pan the view so it lands at the canvas center.
+  // Stars below the horizon are clamped to the horizon in their azimuth.
+  function focusOnStar(star: Star) {
+    selectedStar.value = star
+    const { alt, az } = altAz(star.ra, star.dec)
+    const r = Math.min(Math.PI / 2 - alt, Math.PI / 2)
+    panX.value = -r * Math.sin(az)
+    panY.value = r * Math.cos(az)
+  }
+
   return {
     viewDate, zoom, panX, panY, showLabels, showConstLines, showGrid,
     selectedStar, searchQuery, latitude, localSiderealTime, filteredStars,
-    projectStar, starRadius, spectralColor, selectStar,
+    projectStar, starRadius, spectralColor, selectStar, focusOnStar, altAz,
     STARS, CONSTELLATIONS
   }
 })
