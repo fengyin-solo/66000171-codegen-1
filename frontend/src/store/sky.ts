@@ -15,6 +15,11 @@ export const useSkyStore = defineStore('sky', () => {
   const searchQuery = ref('')
   const latitude = ref(39.9) // Beijing default
 
+  // Bumped each time the catalog asks the canvas to fly to a star.
+  // The canvas watches this nonce to start the centering animation.
+  const focusTarget = ref<Star | null>(null)
+  const focusNonce = ref(0)
+
   const localSiderealTime = computed(() => {
     const d = viewDate.value
     const jd = d.getTime() / 86400000 + 2440587.5
@@ -30,19 +35,30 @@ export const useSkyStore = defineStore('sky', () => {
     return STARS.filter(s => s.name.toLowerCase().includes(q)).slice(0, 5)
   })
 
-  function projectStar(ra: number, dec: number, cx: number, cy: number, scale: number): [number, number] {
+  // Horizontal coordinates (altitude / azimuth in radians) for an equatorial point.
+  function altAzOf(ra: number, dec: number): [number, number] {
     const ha = (localSiderealTime.value - ra) * 15 * Math.PI / 180
     const decRad = dec * Math.PI / 180
     const latRad = latitude.value * Math.PI / 180
 
     const alt = Math.asin(Math.sin(decRad) * Math.sin(latRad) + Math.cos(decRad) * Math.cos(latRad) * Math.cos(ha))
     const az = Math.atan2(-Math.cos(decRad) * Math.sin(ha), Math.sin(decRad) * Math.cos(latRad) - Math.cos(decRad) * Math.sin(latRad) * Math.cos(ha))
+    return [alt, az]
+  }
 
-    if (alt < -0.1) return [-999, -999] // below horizon
-
+  // Projection without the below-horizon cull, so focus math works even when
+  // the target is currently under the horizon.
+  function projectStarRaw(ra: number, dec: number, cx: number, cy: number, scale: number): [number, number, number] {
+    const [alt, az] = altAzOf(ra, dec)
     const r = (Math.PI / 2 - alt) * scale * 0.45
     const x = cx + panX.value + r * Math.sin(az)
     const y = cy + panY.value - r * Math.cos(az)
+    return [x, y, alt]
+  }
+
+  function projectStar(ra: number, dec: number, cx: number, cy: number, scale: number): [number, number] {
+    const [x, y, alt] = projectStarRaw(ra, dec, cx, cy, scale)
+    if (alt < -0.1) return [-999, -999] // below horizon
     return [x, y]
   }
 
@@ -69,10 +85,18 @@ export const useSkyStore = defineStore('sky', () => {
     selectedStar.value = closest
   }
 
+  // Select a star and ask the canvas to fly its view to it.
+  function focusOn(star: Star) {
+    selectedStar.value = star
+    focusTarget.value = star
+    focusNonce.value += 1
+  }
+
   return {
     viewDate, zoom, panX, panY, showLabels, showConstLines, showGrid,
     selectedStar, searchQuery, latitude, localSiderealTime, filteredStars,
-    projectStar, starRadius, spectralColor, selectStar,
+    projectStar, projectStarRaw, altAzOf, starRadius, spectralColor, selectStar,
+    focusOn, focusTarget, focusNonce,
     STARS, CONSTELLATIONS
   }
 })

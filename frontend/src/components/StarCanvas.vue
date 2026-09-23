@@ -6,10 +6,61 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useSkyStore } from '../store/sky'
+import type { Star } from '../types'
 
 const store = useSkyStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let animId = 0
+
+interface Flight {
+  start: number
+  duration: number
+  fromPanX: number
+  fromPanY: number
+  fromZoom: number
+  toZoom: number
+}
+let flight: Flight | null = null
+
+watch(() => store.focusNonce, () => {
+  if (!store.focusTarget) return
+  flight = {
+    start: performance.now(),
+    duration: 500,
+    fromPanX: store.panX,
+    fromPanY: store.panY,
+    fromZoom: store.zoom,
+    // ease in slightly closer so the star is easy to spot
+    toZoom: Math.max(store.zoom, 1.4),
+  }
+})
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+}
+
+// Pan/zoom so the focus target lands on the canvas center. Called every frame
+// while a flight is in progress; alt-az is sampled live so it stays correct
+// even if time/latitude change mid-flight.
+function applyFlight(target: Star, w: number, h: number) {
+  if (!flight) return
+  const now = performance.now()
+  const t = Math.min(1, (now - flight.start) / flight.duration)
+  const e = easeInOut(t)
+
+  store.zoom = flight.fromZoom + (flight.toZoom - flight.fromZoom) * e
+  const s = Math.min(w, h) * store.zoom
+  const [alt, az] = store.altAzOf(target.ra, target.dec)
+  const r = (Math.PI / 2 - alt) * s * 0.45
+
+  // raw position at zero pan is (r*sin(az), -r*cos(az)); inverse pan centers it
+  const toPanX = -r * Math.sin(az)
+  const toPanY = r * Math.cos(az)
+  store.panX = flight.fromPanX + (toPanX - flight.fromPanX) * e
+  store.panY = flight.fromPanY + (toPanY - flight.fromPanY) * e
+
+  if (t >= 1) flight = null
+}
 
 function draw() {
   const canvas = canvasRef.value
@@ -18,6 +69,9 @@ function draw() {
   const w = canvas.width = canvas.offsetWidth * 2
   const h = canvas.height = canvas.offsetHeight * 2
   const cx = w / 2, cy = h / 2
+
+  if (store.focusTarget) applyFlight(store.focusTarget, w, h)
+
   const scale = Math.min(w, h) * store.zoom
 
   // background
@@ -103,6 +157,32 @@ function draw() {
       ctx.fillStyle = 'rgba(200,200,255,0.7)'
       ctx.font = `${10 * store.zoom}px system-ui`
       ctx.fillText(star.name, x + radius + 4, y + 4)
+    }
+  }
+
+  // selected star highlight
+  const sel = store.selectedStar
+  if (sel) {
+    const [sx, sy, sAlt] = store.projectStarRaw(sel.ra, sel.dec, cx, cy, scale)
+    const selRadius = store.starRadius(sel.mag) + 6
+    if (sx > -200 && sx < w + 200 && sy > -200 && sy < h + 200) {
+      const underHorizon = sAlt < -0.1
+      ctx.strokeStyle = underHorizon ? 'rgba(255,180,80,0.9)' : 'rgba(255,230,120,1)'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.beginPath()
+      ctx.arc(sx, sy, selRadius, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      if (store.showLabels) {
+        ctx.fillStyle = underHorizon ? 'rgba(255,180,80,0.9)' : 'rgba(255,230,120,1)'
+        ctx.font = `bold ${11 * store.zoom}px system-ui`
+        const tag = underHorizon
+          ? `${sel.nameCn} ${sel.name}（地平线下）`
+          : `${sel.nameCn} ${sel.name}`
+        ctx.fillText(tag, sx + selRadius + 4, sy - 4)
+      }
     }
   }
 
